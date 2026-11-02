@@ -4,7 +4,6 @@
 -- ГЛОБАЛЬНЫЙ УРОВЕНЬ (ПЛАТФОРМА И ПОЛЬЗОВАТЕЛИ)
 -- ============================================================================
 
--- Таблица пользователей с правами на создание серверов и связью с пригласителем
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -30,18 +29,9 @@ CREATE TABLE IF NOT EXISTS users (
   removed INTEGER NOT NULL DEFAULT 0,            -- Глобальный бан
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_users_name_key ON users(name_key);
 
--- Дружба (глобальная, между двумя пользователями платформы)
-CREATE TABLE IF NOT EXISTS friendships (
-  user_a TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  user_b TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  requested_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (user_a, user_b)
-);
-
--- Черный список (глобальный)
+-- Черный список (блокировка между пользователями платформы)
 CREATE TABLE IF NOT EXISTS blocks (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -49,7 +39,7 @@ CREATE TABLE IF NOT EXISTS blocks (
   PRIMARY KEY (user_id, blocked_id)
 );
 
--- Личные переписки и группы вне серверов
+-- Личные переписки (1-на-1) и внешние групповые чаты
 CREATE TABLE IF NOT EXISTS dms (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL DEFAULT 'dm' CHECK (kind IN ('dm', 'group')),
@@ -78,12 +68,12 @@ CREATE TABLE IF NOT EXISTS dm_messages (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_dm_messages_time ON dm_messages(dm_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_dm_messages_user ON dm_messages(user_id);
 
 -- ============================================================================
--- УРОВЕНЬ СЕРВЕРОВ (GUILDS / COMMUNITIES)
+-- УРОВЕНЬ СЕРВЕРОВ (COMMUNITIES / GUILDS)
 -- ============================================================================
 
--- Серверы (аналог серверов в Discord)
 CREATE TABLE IF NOT EXISTS servers (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -94,7 +84,7 @@ CREATE TABLE IF NOT EXISTS servers (
 );
 CREATE INDEX IF NOT EXISTS idx_servers_owner ON servers(owner_id);
 
--- Участники серверов и их локальные роли
+-- Участники серверов и их роли внутри конкретного сервера
 CREATE TABLE IF NOT EXISTS server_members (
   server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -104,14 +94,15 @@ CREATE TABLE IF NOT EXISTS server_members (
 );
 CREATE INDEX IF NOT EXISTS idx_server_members_user ON server_members(user_id);
 
--- Ссылки-приглашения на конкретные серверы
+-- Приглашения на сервер (с возможностью зарегистрировать новый аккаунт на платформе)
 CREATE TABLE IF NOT EXISTS server_invites (
   code TEXT PRIMARY KEY,
   server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
   created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  max_uses INTEGER NOT NULL DEFAULT 0, -- 0 = бесконечно
+  allows_registration INTEGER NOT NULL DEFAULT 1,
+  max_uses INTEGER NOT NULL DEFAULT 0,
   uses INTEGER NOT NULL DEFAULT 0,
-  expires_at INTEGER,                 -- NULL = бессрочно
+  expires_at INTEGER,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_server_invites_server ON server_invites(server_id);
@@ -155,7 +146,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_user ON messages(user_id);
 
 -- ============================================================================
--- ВСПОМОГАТЕЛЬНЫЕ ТАБЛИЦЫ (РЕАКЦИИ, ФАЙЛЫ, СТАТУСЫ)
+-- ВСПОМОГАТЕЛЬНЫЕ ТАБЛИЦЫ
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS reactions (
